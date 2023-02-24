@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { BlindfoldSystem } = require("../systems/blindfoldSystem/blindFoldSystem");
-const { MoveResult } = require("../utility/chessMatch");
+const { MoveResult, MatchResult } = require("../utility/chessMatch");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -8,7 +8,11 @@ module.exports = {
         .setDescription("Play blindfold chess.")
         .addSubcommand(option =>
             option.setName("play")
-                .setDescription("Enter the queue to play a match"))
+                .setDescription("Enter the queue to play a match")
+                .addUserOption(userOpt =>
+                    userOpt.setName("user")
+                        .setDescription("Invite specific user to a match. Optional")
+                        .setRequired(false)))
         .addSubcommand(option =>
             option.setName("leave")
                 .setDescription("Leave the queue"))
@@ -16,6 +20,9 @@ module.exports = {
             option.setName("move")
                 .setDescription("Make move in ongoing match")
                 .addStringOption(opt => opt.setName("move").setDescription("Move to make in SAN format")))
+        .addSubcommand(option =>
+            option.setName("draw")
+                .setDescription("Propose draw to your opponent"))
         .addSubcommand(option =>
             option.setName("resign")
                 .setDescription("Resigns from active game."))
@@ -43,8 +50,16 @@ module.exports = {
                     interaction.reply({ content: "Şuan devam eden bir maçın var. Hamle yapmak için /blindfold move, maçı terk etmek için /blindfold resign kullan" })
                     return;
                 }
-                blindfoldSystem.addToQueue(userId);
-                interaction.reply({ content: "Sıraya eklendin, eşleşene kadar lütfen bekle.", ephemeral: true });
+                var target = interaction.options.getUser("user");
+                if (target != null)
+                {
+                    interaction.reply({ content: `${target}'a oyun isteği yollandı. Kabul ettiği zaman oyun başlayacak.`, ephemeral: true });
+                    sendInvitation(target, interaction.user);
+                } else
+                {
+                    blindfoldSystem.addToQueue(userId);
+                    interaction.reply({ content: "Sıraya eklendin, eşleşene kadar lütfen bekle.", ephemeral: true });
+                }
                 break;
             case "leave":
                 if (!isAlreadyInQueue)
@@ -56,6 +71,33 @@ module.exports = {
                     blindfoldSystem.leaveQueue(userId);
                 }
                 break;
+            case "draw":
+                if (!isInMatch)
+                {
+                    interaction.reply({ content: "Maçta değilsin", ephemeral: true })
+                    return;
+                }
+                {
+                    var matchInstance = blindfoldSystem.getMatchOfPlayer(userId)
+                    var color = matchInstance.getColorOfId(userId)
+                    var opponentId = color == "w" ? matchInstance.black : matchInstance.white
+                    var opponent = await interaction.client.users.fetch(opponentId)
+
+                    let row = new ActionRowBuilder();
+                    row.addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`blindfold_draw::yes::${matchInstance.match.id}`)
+                            .setLabel("Evet")
+                            .setStyle(ButtonStyle.Success),
+                        new ButtonBuilder()
+                            .setCustomId(`blindfold_draw::no::${matchInstance.match.id}`)
+                            .setLabel("Hayır")
+                            .setStyle(ButtonStyle.Danger))
+
+                    await opponent.send({ content: "Rakibin beraberlik teklif etti. Onaylıyor musun?", components: [row] })
+                    await interaction.reply({ content: "Beraberlik teklifi rakibe iletildi.", ephemeral: true })
+                }
+                break;
             case "resign":
                 if (!isInMatch)
                 {
@@ -65,6 +107,8 @@ module.exports = {
                 var match = blindfoldSystem.getMatchOfPlayer(userId)
                 match.resign(match.getColorOfId(userId))
                 interaction.reply({ content: "Maçtan çekildin", ephemeral: true })
+
+                blindfoldSystem.completeMatch(match)
                 break;
             case "move":
                 if (!isInMatch)
@@ -74,8 +118,9 @@ module.exports = {
                 }
 
                 var move = interaction.options.getString("move")
-                var match = blindfoldSystem.getMatchOfPlayer(userId)
-                var color = match.getColorOfId(userId)
+                var matchInstance = blindfoldSystem.getMatchOfPlayer(userId)
+                var color = matchInstance.getColorOfId(userId)
+                var match = matchInstance.match
 
 
                 if (color != match.getTurn())
@@ -109,14 +154,15 @@ module.exports = {
 
                 var opponent = await client.users.fetch(opponentId)
 
+                // feels odd match.match.id
                 let row = new ActionRowBuilder();
                 row.addComponents(
                     new ButtonBuilder()
-                        .setCustomId(`blindfold_board_yes:${opponent.id}`)
+                        .setCustomId(`blindfold_board::yes::${match.match.id}`)
                         .setLabel("Evet")
                         .setStyle(ButtonStyle.Success),
                     new ButtonBuilder()
-                        .setCustomId("blindfold_board_no")
+                        .setCustomId(`blindfold_board::no::${match.match.id}`)
                         .setLabel("Hayır")
                         .setStyle(ButtonStyle.Danger))
 
@@ -128,4 +174,23 @@ module.exports = {
 
 
     }
+}
+
+function sendInvitation(target, sender)
+{
+    let row = new ActionRowBuilder();
+    row.addComponents(
+        new ButtonBuilder()
+            .setCustomId(`blindfold_invitation::yes::${sender.id}`)
+            .setLabel("Evet")
+            .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+            .setCustomId(`blindfold_invitation::no::${sender.id}`)
+            .setLabel("Hayır")
+            .setStyle(ButtonStyle.Danger))
+
+    target.send({ content: `${sender} sana maç isteği yolladı. Kabul ediyor musun?`, components: [row] });
+
+    BlindfoldSystem.instance.createInvitation(sender, target);
+
 }

@@ -1,6 +1,7 @@
 const { Events } = require('discord.js');
 const {PuzzleSystem} = require('../systems/puzzleSystem/puzzleSystem');
 const { puzzleChannelId } = require('../config.json');
+const { BlindfoldSystem } = require('../systems/blindfoldSystem/blindFoldSystem');
 
 
 module.exports = {
@@ -8,7 +9,9 @@ module.exports = {
 	once: true,
 	execute(client) {
 		console.log(`Ready! Logged in as ${client.user.tag}`);
-		var x = PuzzleSystem.start(client, puzzleChannelId);
-		x.schedule();
+		var puzzleSystem = PuzzleSystem.start(client, puzzleChannelId);
+		puzzleSystem.schedule();
+
+		var blindfoldSystem = BlindfoldSystem.start(client);
 	},
 };

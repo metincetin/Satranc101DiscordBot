@@ -46,14 +46,3 @@ for (const file of commandFiles) {
 }
 
 client.login(discord_token);
-
-
-client.on("ready", ()=>{
-
-	//starting puzzle system
-	var x = PuzzleSystem.start(client, puzzleChannelId);
-	x.schedule();
-
-	// starting blindfold system
-	var blindfold = BlindfoldSystem.start(client);
-})

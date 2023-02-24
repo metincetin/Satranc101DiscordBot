@@ -1,7 +1,7 @@
 const { ChessMatch, MatchResult } = require("../../utility/chessMatch");
 const { EventEmitter } = require("node:events");
 const { ChessboardBuilder } = require("../../utility/chessboardBuilder");
-
+const { blindfoldChannelId } = require("../../config.json")
 class BlindfoldSystem
 {
     constructor()
@@ -9,6 +9,7 @@ class BlindfoldSystem
         this.matches = []
         this.matchmakingQueue = []
         this.eventEmitter = new EventEmitter();
+        this.invitations = []
     }
 
     static start(client)
@@ -26,6 +27,13 @@ class BlindfoldSystem
         console.log(`Added player ${playerId} to queue`)
 
         this.checkQueueForMatch()
+    }
+
+    createInvitation(from, to)
+    {
+        let inv = new Invitation(from, to);
+        inv.date = Date.now();
+        this.invitations.push(inv)
     }
 
     checkQueueForMatch()
@@ -72,77 +80,79 @@ class BlindfoldSystem
         {
             this.onMatchEnded(matchInstance, result)
         })
-        console.log(`Match started: white ${playerIdA}, black: ${playerIdB}`)
+        console.log(`Match started. White ${playerIdA}, Black: ${playerIdB}, matchId: ${match.id}`)
        
-        this.client.users.fetch(playerIdA).then(whitePlayer => {
-            this.client.users.fetch(playerIdB).then(blackPlayer => {
-                whitePlayer.send({content:`Maç başladı. Rakibin: ${blackPlayer}. Beyaz taşlar sende ve hamle senin. \`/blindfold move\` ile oynayabilirsin`, ephemeral: true})
-                blackPlayer.send({content: `Maç başladı. Rakibin ${whitePlayer}. Siyah taşlar sende. Rakibinin hamlesini bekle`, ephemeral: true})
-            })
+
+        
+        this.client.channels.fetch().then(channel => {
+            channel.send({ content: `Maç başladı. Rakibin: ${blackPlayer}. Beyaz taşlar sende ve hamle senin. \`/blindfold move\` ile oynayabilirsin`})
         })
-    }
+
+  }
 
     async onMoveMade(matchInstance, move)
     {
         let newTurnPlayerId = matchInstance.match.getTurn() === "w" ? matchInstance.white : matchInstance.black
         var matchEnded = matchInstance.match.getIsGameOver()
-        let user = await client.users.fetch(newTurnPlayerId)
+        let user = await this.client.users.fetch(newTurnPlayerId)
         if (!matchEnded)
         {
-            user.send({ content: `Rakibin ${move} oynadı. Sıra sende`, ephemeral: true })
+            await user.send({ content: `Rakibin ${move} oynadı. Sıra sende`, ephemeral: true })
         } else
         {
             await user.send({ content: `Rakibin ${move} oynadı`, ephemeral: true })
         }
-
-
-
     }
 
     async onMatchEnded(matchInstance, matchResult)
     {
-        const whitePlayer = client.users.fetch(matchInstance.white)
-        const blackPlayer = client.users.fetch(matchInstance.black)
+        var match = matchInstance.match
+        var matchId = match.id;
 
-        var turn = matchInstance.match.getTurn()
-        var whiteBoard = ChessboardBuilder.create()
-            .setFen(matchInstance.match.getFen())
-            .setPov("w")
-        var blackBoard = ChessboardBuilder.create()
-            .setFen(matchInstance.match.getFen())
-            .setPov(b)
-        if (matchResult === MatchResult.BlackWins || matchResult === MatchResult.WhiteWins)
+        var matchResult = match.getMatchResult()
+
+        var matchPlayers = await this.fetchPlayersOfMatch(matchId);
+
+
+        var channel = await this.client.channels.fetch(blindfoldChannelId);
+
+        async function generateBuffer()
         {
-            if (turn === "w")
-            {
-                await whitePlayer.send({ files: [await whiteBoard.generateBuffer()], content: "Tebrikler, sen kazandın!", ephemeral: true })
-                await blackPlayer.send({ files: [await blackBoard.generateBuffer()], content: "Rakibin kazandı", ephemeral: true })
-            } else
-            {
-                await blackPlayer.send({ files: [await blackBoard.generateBuffer()], content: "Tebrikler, sen kazandın!", ephemeral: true })
-                await whitePlayer.send({ files: [await whiteBoard.generateBuffer()], content: "Rakibin kazandı", ephemeral: true })
-            }
+            return await ChessboardBuilder.create().setFen(match.getFEN()).generateBuffer()
         }
-        else
+
+
+        switch (matchResult)
         {
-            switch (matchResult)
-            {
-                case MatchResult.Draw:
-                    await whitePlayer.send({ files: [await whiteBoard.generateBuffer()], content: "Maç sona erdi, berabere.", ephemeral: true })
-                    await blackPlayer.send({ files: [await blackBoard.generateBuffer()], content: "Maç sone erdi, berabere.", ephemeral: true })
-                    break;
-                case MatchResult.Stalemate:
-                    await whitePlayer.send({ files: [await whiteBoard.generateBuffer()], content: "Maç sona erdi, pat.", ephemeral: true })
-                    await blackPlayer.send({ files: [await blackBoard.generateBuffer()], content: "Maç sone erdi, pat.", ephemeral: true })
-                    break;
-            }
+            case MatchResult.Checkmate:
+            case MatchResult.Resignation:
+                var winner = match.getWinner() === "w" ? matchPlayers.white : matchPlayers.black
+
+                var winnerName = `Kazanan ${match.getWinner() === "w" ? "beyazlardan" : "siyahlardan"} ${winner}`
+                await channel.send({ content: `${matchPlayers.white} / ${matchPlayers.black} karşılaşması ${MatchResult.toString(matchResult).toLowerCase()} ile sonlandı. ${winnerName}`, files: [await generateBuffer()] })
+                break;
+            case MatchResult.Canceled:
+                await channel.send({ content: `${matchPlayers.white} / ${matchPlayers.black} maçı iptal edildi.` })
+                break;
+            case MatchResult.Draw:
+                await channel.send({ content: `${matchPlayers.white} / ${matchPlayers.black} maçı berabere sonuçlandı.`, files: [await generateBuffer()] })
+                break;
+            case MatchResult.Stalemate:
+                await channel.send({ content: `${matchPlayers.white} / ${matchPlayers.black} maçı pat ile sonuçlandı.`, files: [await generateBuffer()] })
+                break;
+        }
+        if (matchResult == MatchResult.Ongoing)
+        {
+            throw ("onMatchEnded event is invoked but match result is MatchResult.Ongoing. This should never happen")
         }
 
         this.removeMatch(matchInstance)
     }
 
-    removeMatch(matchInstance)
+    async removeMatch(matchInstance)
     {
+
+
         this.matches.filter(x => x != matchInstance);
     }
 
@@ -164,6 +174,11 @@ class BlindfoldSystem
         return null;
     }
 
+    getMatchInstance(id)
+    {
+        return this.matches.find(x => x.match.id === id);
+    }
+
     getIsPlayerInQueue(playerId)
     {
         return this.matchmakingQueue.includes(playerId);
@@ -171,7 +186,38 @@ class BlindfoldSystem
 
     isValidForMatch(playerIdA, playerIdB)
     {
-        return playerIdA !== playerIdB;
+        var alreadyInMatch = this.getMatchOfPlayer(playerIdA) != null || this.getMatchOfPlayer(playerIdB);
+
+        return playerIdA !== playerIdB || alreadyInMatch;
+    }
+
+    async fetchPlayersOfMatch(matchId)
+    {
+        var match = this.getMatchInstance(matchId)
+        return {
+            white: await this.client.users.fetch(match.white),
+            black: await this.client.users.fetch(match.black)
+        }
+    }
+
+    async showBoardOnChannel(matchId)
+    {
+        const match = this.getMatchInstance(matchId).match
+        console.log(`Showing match board of match ${match}`)
+        if (match != undefined)
+        {
+            const fen = match.getFEN()
+            let buffer = await ChessboardBuilder.create().setFen(fen).generateBuffer();
+            let channel = await this.client.channels.fetch(blindfoldChannelId)
+            var players = await this.fetchPlayersOfMatch(matchId)
+            var turn = match.getTurn()
+            await channel.send({ content: `${players.white} / ${players.black} karşılaşmasının şuanki konumu. Hamle sırası ${turn == 'w' ? "beyazda" : "siyahta"}`, files: [buffer] })
+        }
+    }
+
+    async completeMatch(matchId)
+    {
+
     }
 }
 
@@ -192,6 +238,24 @@ class MatchInstance
     resign(color)
     {
         this.match.resign(color)
+    }
+
+    getWinnerId()
+    {
+        return this.match.getWinner() === "w" ? this.white : this.black
+    }
+    getOpponentOfId(id)
+    {
+        return id === this.white ? this.black : this.white;
+    }
+}
+
+class Invitation
+{
+    constructor(from, to)
+    {
+        this.from = from
+        this.to = to
     }
 }
 

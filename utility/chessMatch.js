@@ -1,5 +1,7 @@
 const { Chess } = require("chess.js");
 const { EventEmitter } = require("node:events")
+const crypto = require("node:crypto")
+
 
 class ChessMatch
 {
@@ -7,6 +9,9 @@ class ChessMatch
     {
         this.chess = new Chess();
         this.eventEmitter = new EventEmitter();
+        this.id = crypto.randomUUID();
+        this.resignedColor = ""
+        this.acceptedDraw = false
     }
     getTurn()
     {
@@ -15,12 +20,36 @@ class ChessMatch
 
     getIsDraw()
     {
-        return this.chess.isDraw();
+        return this.chess.isDraw() || this.acceptedDraw;
     }
     getIsStalemate()
     {
         return this.chess.isStalemate();
     }
+    getIsCheckmate()
+    {
+        return this.chess.isCheckmate();
+    }
+
+    getWinner()
+    {
+        var result = this.getMatchResult();
+        if (result == MatchResult.Resignation)
+        {
+            if (this.resignedColor == "w")
+                return "b";
+            else
+                return "w"
+        }
+        if (result == MatchResult.Checkmate)
+        {
+            if (this.getTurn() === "w") {
+                return "b";
+            }
+            return "w;"
+        }
+    }
+
 
     getMatchResult()
     {
@@ -36,37 +65,25 @@ class ChessMatch
         {
             return MatchResult.Draw;
         }
-        if (this.chess.isCheckmate())
+        if (this.getIsCheckmate())
         {
-            if (this.getTurn() === "w")
-            {
-                return MatchResult.BlackWins;
-            }
-            return MatchResult.WhiteWins;
+            return MatchResult.Checkmate;
         }
         if (this.resignedColor !== "")
         {
-            switch (this.resignedColor)
-            {
-                case "w":
-                    return MatchResult.BlackWins;
-                    break;
-                case "b":
-                    return MatchResult.WhiteWins;
-                    break;
-            }
+            return MatchResult.Resignation;
         }
     }
 
 
     getIsGameOver()
     {
-        return this.chess.isGameOver() || this.resignedColor != ""
+        return this.chess.isGameOver() || this.resignedColor !== "" || this.acceptedDraw    ;
     }
 
     getIsCheck()
     {
-        return this.chess.isCheckmate()
+        return this.chess.isCheck()
     }
 
     move(value)
@@ -85,17 +102,25 @@ class ChessMatch
             {
                 this.eventEmitter.emit("moved", madeMove.san)
             }
+            console.log(madeMove)
             return MoveResult.Valid
         }
         catch (e)
         {
+            console.log(e);
             return MoveResult.Invalid;
         }
     }
-
+    
     resign(color)
     {
         this.resignedColor = color
+        this.eventEmitter.emit("ended", this.getMatchResult())
+    }
+
+    draw(){
+        this.acceptedDraw = true
+        this.eventEmitter.emit("ended", this.getMatchResult());
     }
 
     getFEN()
@@ -109,11 +134,29 @@ const MoveResult = {
     Invalid: 1,
 }
 const MatchResult = {
-    WhiteWins: 0,
-    BlackWins: 1,
-    Stalemate: 2,
-    Draw: 3,
-    Ongoing: 4
+    Checkmate: 0,
+    Stalemate: 1,
+    Draw: 2,
+    Resignation: 3,
+    Ongoing: 4,
+    Canceled: 5,
+    toString: function (v)
+    {
+        switch (v)
+        {
+            case 0:
+                return "Şah mat"
+            case 1:
+                return "Pat"
+            case 2:
+                return "Berabere"
+            case 3:
+                return "Maçtan Çekilme"
+            case 5:
+                return "İptal"
+        }
+        return "Invalid Input"
+    }
 }
 
 module.exports = {
