@@ -3,7 +3,8 @@ const path = require('node:path');
 const { Client, Collection, GatewayIntentBits } = require('discord.js');
 const { discord_token, puzzleChannelId } = require('./config.json');
 
-const {PuzzleSystem} = require('./systems/puzzleSystem/puzzleSystem')
+const {PuzzleSystem} = require('./systems/puzzleSystem/puzzleSystem');
+const { BlindfoldSystem } = require('./systems/blindfoldSystem/blindFoldSystem');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -49,4 +50,7 @@ client.on("ready", ()=>{
 	//starting puzzle system
 	var x = PuzzleSystem.start(client, puzzleChannelId);
 	x.schedule();
+
+	// starting blindfold system
+	var blindfold = BlindfoldSystem.start(client);
 })
