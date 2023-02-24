@@ -2,25 +2,31 @@ module.exports = { getresults };
 
 const { default: axios } = require('axios');
 const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder } = require('discord.js');
-const { discord_token , announcementChannelID, dbConnectionString} = require('../config.json');
+const { discord_token , announcementChannelID, dbConnectionString, mongoDB, mongoCol} = require('../config.json');
 const MongoClient = require("mongodb").MongoClient;
 
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+//sonucunu istediğimiz turnuvanın id'sini parametre olarak alıyoruz.
 function getresults(t_id){
+    //axios ile lichess api'ına erişerek turnuva sonuçlarını içeren bir nd-json objesi alıyoruz.
     axios.get('https://lichess.org/api/tournament/' + t_id + '/results')
     .then(function (response) {
 
+    //nd-json objesini, üzerinde işlem yapabilmemizin kolaylaşması için json dizisine çeviriyoruz.
     var json = "[" + response.data.replace(/\r?\n/g, ",").replace(/,\s*$/, "") + "]";
     var jsondata = JSON.parse(json);
 
     async function run() {
 
+      /*turnuvada ilk üçe giren lichess hesaplarının id'lerini kendi veritabanımızda aratarak herhangi bir discord hesabına bağlı olup
+      olmadıklarını inceliyoruz. bu kontroller sonucunda da duyuru yapılırken lichess veya discord hesabı olarak duyurulmalarına
+      karar veriyoruz.*/
       checkFirst = false;
       try {
         const client = new MongoClient(dbConnectionString);
-        var result1 = await client.db('denemeDB').collection('denemeCol').findOne({ lichessID: jsondata[0].username.toLowerCase() });
+        var result1 = await client.db(mongoDB).collection(mongoCol).findOne({ lichessID: jsondata[0].username.toLowerCase() });
         if(result1 != null){
           checkFirst = true;
           console.log(result1.discordID);
@@ -35,7 +41,7 @@ function getresults(t_id){
       checkSecond = false;
       try {
         const client = new MongoClient(dbConnectionString);
-        var result2 = await client.db('denemeDB').collection('denemeCol').findOne({ lichessID: jsondata[1].username.toLowerCase() });
+        var result2 = await client.db(mongoDB).collection(mongoCol).findOne({ lichessID: jsondata[1].username.toLowerCase() });
         if(result2 != null){
           checkSecond = true;
           console.log(result2.discordID);
@@ -50,7 +56,7 @@ function getresults(t_id){
       checkThird = false;
       try {
         const client = new MongoClient(dbConnectionString);
-        var result3 = await client.db('denemeDB').collection('denemeCol').findOne({ lichessID: jsondata[2].username.toLowerCase() });
+        var result3 = await client.db(mongoDB).collection(mongoCol).findOne({ lichessID: jsondata[2].username.toLowerCase() });
         if(result3 != null){
           checkThird = true;
           console.log(result3.discordID);

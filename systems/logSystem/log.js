@@ -1,20 +1,44 @@
-class Log {
-    constructor() {
+/*class LogSystem {
+
+    fs = require('fs');
+    path = require('path');
     
-        this.date = new Date()
-        this.txtdate = `${this.date.getDate()}-${this.date.getMonth() + 1}-${this.date.getFullYear()}`
-
-    }
-    
-    async Create(log) {
-
-        const fs = require('fs')
-        let data = await `[${this.date.getHours()}-${this.date.getMinutes()}-${this.date.getSeconds()}] ` + log
-
+    async CreateLog(log) {
+        const date = Date.now();
+        const txtdate = `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
+        const txttime = `${date.getHours()}-${date.getMinutes()}-${date.getSeconds()}`;
         
-        fs.appendFile(`${this.txtdate}.txt`, data + '\n', (err) => { 
+        const data = await `[${txttime}] ` + log;
+        const dirPath = path.join(__dirname, 'logs');
+        const filePath = path.join(dirPath, `${txtdate} ${txttime}.txt`);
+
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath);
+        }
+        
+        fs.appendFile(filePath, data + '\n', (err) => { 
+            if (err) throw err;            
+        })
+    }
+
+    async CreateErrorLog(errlog) {
+        const date = Date.now();
+        const txtdate = `${date.getDate()}-${date.getMonth() + 1}-${date.getFullYear()}`;
+        const txttime = `${date.getHours()}-${date.getMinutes()}-${date.getSeconds()}`;
+
+        const data = await `[${txttime}] ` + errlog.stack;
+        const dirPath = path.join(__dirname, 'errorlogs');
+        const filePath = path.join(dirPath, `${txtdate} ${txttime}.txt`);
+
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath)
+        }
+        
+        fs.appendFile(filePath, data + '\n', (err) => { 
             if (err) throw err;
-            console.log('Başarılı bir şekilde veri eklendi')
+            CreateLog(`Bir hata dosyasi oluşturuldu. DOSYA: ${txtdate + " " + txttime}.txt`);
         })
     }
 }
+
+module.exports = {LogSystem};*/

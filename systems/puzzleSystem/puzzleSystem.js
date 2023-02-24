@@ -1,7 +1,7 @@
 const { ChessboardBuilder } = require("../../utility/chessboardBuilder");
-const { EmbedBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, Events, EmbedBuilder } = require('discord.js');
 const { PuzzleDatabase } = require("./puzzleDatabase");
-const { dbConnectionString } = require("../../config.json");
+const { dbConnectionString, mongoDB, mongoCol } = require("../../config.json");
 
 const schedule = require("node-schedule");
 const scheduleConfig = require("./puzzleScheduleConfig");
@@ -67,16 +67,20 @@ class PuzzleSystem
         await channel.send({ files: [buffer], content: `Bulmaca zamanı! Rating: ||${this.activePuzzle.rating}||` })
     }
 
+    //bir üye bulmacayı çözdüğünde çalışan fonksiyon.
+    //üyenin discord id'si parametre ile alınıyor.
     async solvePuzzle(solverId)
     {
         if (!this.activePuzzle.solved)
         {   
+            //üyenin id'si üzerinden bulmaca puanlarının olduğu tablo sorgulanıyor.
             var p_points;
             const db_client = new MongoClient(dbConnectionString);
 
             try {
-                const result = await db_client.db('denemeDB').collection('denemeCol2').findOne({ discordID: solverId });
+                const result = await db_client.db(mongoDB).collection(mongoCol).findOne({ discordID: solverId });
 
+                //eğer üyenin bulmaca puanı kaydı yoksa yeni kayıt oluşturuluyor ve az önce çözdüğü bulmaca için 1 puan ekleniyor.
                 if(result == null){
 
                   p_points = 1;
@@ -86,20 +90,28 @@ class PuzzleSystem
                       puzzlePoints: p_points 
                   }
 
-                  await db_client.db('denemeDB').collection('denemeCol2').insertOne(doc);
+                  await db_client.db(mongoDB).collection(mongoCol).insertOne(doc);
 
                 }else{
 
-                  p_points = parseInt(result.puzzlePoints) + 1;
-                  const updateDoc = 
-                  {
-                      $set: 
-                      {
-                          puzzlePoints: p_points
-                      },
-                  };
+                    if (result.puzzlePoints == null) {
+                        //üyenin kaydı var ancak bulmaca puanının yoksa bulmaca puanı kayda ekleniyor.
+                        p_points = 1;
+                        await db_client.db(mongoDB).collection(mongoCol)
+                        .updateOne({ discordID: solverId }, {$set: {puzzlePoints: p_points}});
+                    } else {
+                        //üyenin bulmaca puanı kaydı varsa eski puanın bir fazlası yeni puan olarak değiştiriliyor.
+                        p_points = parseInt(result.puzzlePoints) + 1;
+                        const updateDoc = 
+                        {
+                            $set: 
+                            {
+                                puzzlePoints: p_points
+                            },
+                        };
 
-                  await db_client.db('denemeDB').collection('denemeCol2').updateOne({ discordID: solverId }, updateDoc);
+                        await db_client.db(mongoDB).collection(mongoCol).updateOne({ discordID: solverId }, updateDoc);
+                    }
                 }
 
               } finally {
@@ -112,6 +124,7 @@ class PuzzleSystem
                 .setPov(this.activePuzzle.playerSide)
                 .generateBuffer();
 
+            //kanala gönderilecek embed mesaj oluşturuluyor.
             var solvedEmbed = new EmbedBuilder()
                 .setColor(0x2cee1a)
                 .setTitle('Bulmaca Çözüldü!')
@@ -120,7 +133,15 @@ class PuzzleSystem
                 + `\nÇözüm: ||${this.activePuzzle.getMovesSan().join(", ")}||\nBulmaca Linki: ${this.activePuzzle.getLichessPuzzleLink()}`)
                 .setThumbnail('https://cdn.discordapp.com/attachments/1065015635299537028/1066379362414379100/Satranc101Logo_1.png');
 
-            channel.send({embeds: [solvedEmbed] });
+            const row = new ActionRowBuilder()
+			.addComponents(
+				new ButtonBuilder()
+					.setCustomId('button1')
+					.setLabel('Skor Tablosunu Göster')
+					.setStyle(ButtonStyle.Secondary),
+			);
+
+            channel.send({embeds: [solvedEmbed], components: [row] });
         }
     }
 

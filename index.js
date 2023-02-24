@@ -1,13 +1,15 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { Client, Collection, GatewayIntentBits } = require('discord.js');
-const { discord_token, puzzleChannelId } = require('./config.json');
 
 const {PuzzleSystem} = require('./systems/puzzleSystem/puzzleSystem');
 const { BlindfoldSystem } = require('./systems/blindfoldSystem/blindFoldSystem');
+const { Client, Collection, GatewayIntentBits } = require('discord.js');
+const { discord_token } = require('./config.json');
+const { Events } = require('discord.js');
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+//event handler
 const eventsPath = path.join(__dirname, 'events');
 const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
 
@@ -24,6 +26,7 @@ for (const file of eventFiles) {
 	}
 }
 
+//command handler
 client.commands = new Collection();
 
 const commandsPath = path.join(__dirname, 'commands');
