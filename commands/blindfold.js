@@ -53,8 +53,12 @@ module.exports = {
                 var target = interaction.options.getUser("user");
                 if (target != null)
                 {
-                    interaction.reply({ content: `${target}'a oyun isteği yollandı. Kabul ettiği zaman oyun başlayacak.`, ephemeral: true });
-                    sendInvitation(target, interaction.user);
+                    
+                    if (sendInvitation(target, interaction.user)){
+                        interaction.reply({ content: `${target}'a oyun isteği yollandı. Kabul ettiği zaman oyun başlayacak.`, ephemeral: true });
+                    }else{
+                        interaction.reply({content:"Kullanıcının aktif bir daveti bulunuyor ya da şuan bir maçta."})
+                    }
                 } else
                 {
                     blindfoldSystem.addToQueue(userId);
@@ -191,6 +195,6 @@ function sendInvitation(target, sender)
 
     target.send({ content: `${sender} sana maç isteği yolladı. Kabul ediyor musun?`, components: [row] });
 
-    BlindfoldSystem.instance.createInvitation(sender, target);
+    return BlindfoldSystem.instance.createInvitation(sender, target);
 
 }

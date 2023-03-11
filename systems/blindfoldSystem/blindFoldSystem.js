@@ -29,11 +29,25 @@ class BlindfoldSystem
         this.checkQueueForMatch()
     }
 
+    getInvitationOfPlayer(id)
+    {
+        return this.invitations.find(x => x.from == id || x.to == id)
+    }
+
     createInvitation(from, to)
     {
+        if (this.getInvitationOfPlayer(from) !== undefined) return false
+        if (this.getInvitationOfPlayer(to) !== undefined) return false
+        if (this.getMatchOfPlayer(from) !== undefined) return false;
+        if (this.getMatchOfPlayer(to) !== undefined) return false;
         let inv = new Invitation(from, to);
         inv.date = Date.now();
         this.invitations.push(inv)
+        return true
+    }
+    removeInvitation(from, to)
+    {
+        this.invitations = this.invitations.filter(x => x.from !== from && x.to !== to)
     }
 
     checkQueueForMatch()
@@ -81,26 +95,43 @@ class BlindfoldSystem
             this.onMatchEnded(matchInstance, result)
         })
         console.log(`Match started. White ${playerIdA}, Black: ${playerIdB}, matchId: ${match.id}`)
-       
 
-        
-        this.client.channels.fetch().then(channel => {
-            channel.send({ content: `Maç başladı. Rakibin: ${blackPlayer}. Beyaz taşlar sende ve hamle senin. \`/blindfold move\` ile oynayabilirsin`})
+
+
+        this.client.channels.fetch().then(channel =>
+        {
+            this.fetchPlayersOfMatch(match.id).then(players =>
+            {
+                channel.send({ content: `${players.white} / ${players.black} maçı başladı. Beyazlar: ${players.white}` })
+            })
         })
 
-  }
+    }
 
     async onMoveMade(matchInstance, move)
     {
         let newTurnPlayerId = matchInstance.match.getTurn() === "w" ? matchInstance.white : matchInstance.black
+
         var matchEnded = matchInstance.match.getIsGameOver()
-        let user = await this.client.users.fetch(newTurnPlayerId)
-        if (!matchEnded)
+        let playerA = await this.client.users.fetch(matchInstance.white)
+        let playerB = await this.client.usesr.fetch(matchInstance.black)
+
+        let newTurnPlayer = undefined
+
+        if (newTurnPlayerId == matchInstance.black)
         {
-            await user.send({ content: `Rakibin ${move} oynadı. Sıra sende`, ephemeral: true })
+            newTurnPlayer = playerB
+
         } else
         {
-            await user.send({ content: `Rakibin ${move} oynadı`, ephemeral: true })
+            newTurnPlayer = playerA
+        }
+
+        let channel = await this.client.channels.fetch(blindfoldChannelId)
+
+        if (!matchEnded)
+        {
+            await channel.send({ content: `${playerA} / ${playerB} maçında ${matchInstance.match.getTurn() === "w" ? "beyazlar" : "siyahlar"} ${move} oynadı. Hamle sırası: ${newTurnPlayer} (${matchInstance.match.getTurn() === "w" ? "Beyaz" : "Siyah"})` })
         }
     }
 
